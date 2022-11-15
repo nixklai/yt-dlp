@@ -2950,10 +2950,10 @@ class PlaylistEntries:
             self.is_exhausted = True
 
         requested_entries = info_dict.get('requested_entries')
-        self.is_incomplete = bool(requested_entries)
+        self.is_incomplete = requested_entries is not None
         if self.is_incomplete:
             assert self.is_exhausted
-            self._entries = [self.MissingEntry] * max(requested_entries)
+            self._entries = [self.MissingEntry] * max(requested_entries or [0])
             for i, entry in zip(requested_entries, entries):
                 self._entries[i - 1] = entry
         elif isinstance(entries, (list, PagedList, LazyList)):
@@ -3022,7 +3022,7 @@ class PlaylistEntries:
                     if not self.is_incomplete:
                         raise self.IndexError()
                 if entry is self.MissingEntry:
-                    raise EntryNotInPlaylist(f'Entry {i} cannot be found')
+                    raise EntryNotInPlaylist(f'Entry {i + 1} cannot be found')
                 return entry
         else:
             def get_entry(i):
@@ -5847,14 +5847,23 @@ def cached_method(f):
 
 
 class classproperty:
-    """property access for class methods"""
+    """property access for class methods with optional caching"""
+    def __new__(cls, func=None, *args, **kwargs):
+        if not func:
+            return functools.partial(cls, *args, **kwargs)
+        return super().__new__(cls)
 
-    def __init__(self, func):
+    def __init__(self, func, *, cache=False):
         functools.update_wrapper(self, func)
         self.func = func
+        self._cache = {} if cache else None
 
     def __get__(self, _, cls):
-        return self.func(cls)
+        if self._cache is None:
+            return self.func(cls)
+        elif cls not in self._cache:
+            self._cache[cls] = self.func(cls)
+        return self._cache[cls]
 
 
 class Namespace(types.SimpleNamespace):
