@@ -2128,6 +2128,11 @@ from .viu import (
     ViuPlaylistIE,
     ViuOTTIE,
 )
+from .viutv import (
+    ViuTVProgramIE,
+    ViuTVEpisodeIE,
+    ViuTVProductIE,
+)
 from .vk import (
     VKIE,
     VKUserVideosIE,
