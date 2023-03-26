@@ -1,6 +1,7 @@
 import itertools
 import json
 import random
+import re
 import string
 import time
 
@@ -11,15 +12,20 @@ from ..utils import (
     HEADRequest,
     LazyList,
     UnsupportedError,
+    UserNotLive,
+    determine_ext,
+    format_field,
     get_element_by_id,
     get_first,
     int_or_none,
     join_nonempty,
+    merge_dicts,
     qualities,
     remove_start,
     srt_subtitles_timecode,
     str_or_none,
     traverse_obj,
+    try_call,
     try_get,
     url_or_none,
 )
@@ -49,7 +55,7 @@ class TikTokBaseIE(InfoExtractor):
 
     def _call_api_impl(self, ep, query, manifest_app_version, video_id, fatal=True,
                        note='Downloading API JSON', errnote='Unable to download API page'):
-        self._set_cookie(self._API_HOSTNAME, 'odin_tt', ''.join(random.choice('0123456789abcdef') for _ in range(160)))
+        self._set_cookie(self._API_HOSTNAME, 'odin_tt', ''.join(random.choices('0123456789abcdef', k=160)))
         webpage_cookies = self._get_cookies(self._WEBPAGE_HOST)
         if webpage_cookies.get('sid_tt'):
             self._set_cookie(self._API_HOSTNAME, 'sid_tt', webpage_cookies['sid_tt'].value)
@@ -68,8 +74,8 @@ class TikTokBaseIE(InfoExtractor):
             'build_number': app_version,
             'manifest_version_code': manifest_app_version,
             'update_version_code': manifest_app_version,
-            'openudid': ''.join(random.choice('0123456789abcdef') for _ in range(16)),
-            'uuid': ''.join([random.choice(string.digits) for _ in range(16)]),
+            'openudid': ''.join(random.choices('0123456789abcdef', k=16)),
+            'uuid': ''.join(random.choices(string.digits, k=16)),
             '_rticket': int(time.time() * 1000),
             'ts': int(time.time()),
             'device_brand': 'Google',
@@ -199,6 +205,16 @@ class TikTokBaseIE(InfoExtractor):
 
         known_resolutions = {}
 
+        def mp3_meta(url):
+            return {
+                'format_note': 'Music track',
+                'ext': 'mp3',
+                'acodec': 'mp3',
+                'vcodec': 'none',
+                'width': None,
+                'height': None,
+            } if determine_ext(url) == 'mp3' else {}
+
         def extract_addr(addr, add_meta={}):
             parsed_meta, res = parse_url_key(addr.get('url_key', ''))
             if res:
@@ -214,7 +230,8 @@ class TikTokBaseIE(InfoExtractor):
                 'source_preference': -2 if 'aweme/v1' in url else -1,  # Downloads from API might get blocked
                 **add_meta, **parsed_meta,
                 'format_note': join_nonempty(
-                    add_meta.get('format_note'), '(API)' if 'aweme/v1' in url else None, delim=' ')
+                    add_meta.get('format_note'), '(API)' if 'aweme/v1' in url else None, delim=' '),
+                **mp3_meta(url),
             } for url in addr.get('url_list') or []]
 
         # Hack: Add direct video links first to prioritize them when removing duplicate formats
@@ -284,7 +301,7 @@ class TikTokBaseIE(InfoExtractor):
         user_url = self._UPLOADER_URL_FORMAT % (traverse_obj(author_info,
                                                              'sec_uid', 'id', 'uid', 'unique_id',
                                                              expected_type=str_or_none, get_all=False))
-        labels = traverse_obj(aweme_detail, ('hybrid_label', ..., 'text'), expected_type=str, default=[])
+        labels = traverse_obj(aweme_detail, ('hybrid_label', ..., 'text'), expected_type=str)
 
         contained_music_track = traverse_obj(
             music_info, ('matched_song', 'title'), ('matched_pgc_sound', 'title'), expected_type=str)
@@ -354,7 +371,7 @@ class TikTokBaseIE(InfoExtractor):
                 'ext': 'mp4',
                 'width': width,
                 'height': height,
-            } for url in traverse_obj(play_url, (..., 'src'), expected_type=url_or_none, default=[]) if url]
+            } for url in traverse_obj(play_url, (..., 'src'), expected_type=url_or_none) if url]
 
         download_url = url_or_none(video_info.get('downloadAddr')) or traverse_obj(video_info, ('download', 'url'), expected_type=url_or_none)
         if download_url:
@@ -549,6 +566,28 @@ class TikTokIE(TikTokBaseIE):
         },
         'skip': 'This video is unavailable',
     }, {
+        # slideshow audio-only mp3 format
+        'url': 'https://www.tiktok.com/@_le_cannibale_/video/7139980461132074283',
+        'info_dict': {
+            'id': '7139980461132074283',
+            'ext': 'mp3',
+            'title': 'TikTok video #7139980461132074283',
+            'description': '',
+            'creator': 'Antaura',
+            'uploader': '_le_cannibale_',
+            'uploader_id': '6604511138619654149',
+            'uploader_url': 'https://www.tiktok.com/@MS4wLjABAAAAoShJqaw_5gvy48y3azFeFcT4jeyKWbB0VVYasOCt2tTLwjNFIaDcHAM4D-QGXFOP',
+            'artist': 'nathan !',
+            'track': 'grahamscott canon',
+            'upload_date': '20220905',
+            'timestamp': 1662406249,
+            'view_count': int,
+            'like_count': int,
+            'repost_count': int,
+            'comment_count': int,
+            'thumbnail': r're:^https://.+\.webp',
+        },
+    }, {
         # Auto-captions available
         'url': 'https://www.tiktok.com/@hankgreen1/video/7047596209028074758',
         'only_matching': True
@@ -562,7 +601,7 @@ class TikTokIE(TikTokBaseIE):
             self.report_warning(f'{e}; trying with webpage')
 
         url = self._create_url(user_id, video_id)
-        webpage = self._download_webpage(url, video_id, headers={'User-Agent': 'User-Agent:Mozilla/5.0'})
+        webpage = self._download_webpage(url, video_id, headers={'User-Agent': 'Mozilla/5.0'})
         next_data = self._search_nextjs_data(webpage, video_id, default='{}')
         if next_data:
             status = traverse_obj(next_data, ('props', 'pageProps', 'statusCode'), expected_type=int) or 0
@@ -638,7 +677,7 @@ class TikTokUserIE(TikTokBaseIE):
             'max_cursor': 0,
             'min_cursor': 0,
             'retry_type': 'no_retry',
-            'device_id': ''.join(random.choice(string.digits) for _ in range(19)),  # Some endpoints don't like randomized device_id, so it isn't directly set in _call_api.
+            'device_id': ''.join(random.choices(string.digits, k=19)),  # Some endpoints don't like randomized device_id, so it isn't directly set in _call_api.
         }
 
         for page in itertools.count(1):
@@ -686,7 +725,7 @@ class TikTokBaseListIE(TikTokBaseIE):  # XXX: Conventionally, base classes shoul
             'cursor': 0,
             'count': 20,
             'type': 5,
-            'device_id': ''.join(random.choice(string.digits) for i in range(19))
+            'device_id': ''.join(random.choices(string.digits, k=19))
         }
 
         for page in itertools.count(1):
@@ -980,3 +1019,175 @@ class TikTokVMIE(InfoExtractor):
         if self.suitable(new_url):  # Prevent infinite loop in case redirect fails
             raise UnsupportedError(new_url)
         return self.url_result(new_url)
+
+
+class TikTokLiveIE(TikTokBaseIE):
+    _VALID_URL = r'''(?x)https?://(?:
+        (?:www\.)?tiktok\.com/@(?P<uploader>[\w.-]+)/live|
+        m\.tiktok\.com/share/live/(?P<id>\d+)
+    )'''
+    IE_NAME = 'tiktok:live'
+
+    _TESTS = [{
+        'url': 'https://www.tiktok.com/@weathernewslive/live',
+        'info_dict': {
+            'id': '7210809319192726273',
+            'ext': 'mp4',
+            'title': r're:ウェザーニュースLiVE[\d\s:-]*',
+            'creator': 'ウェザーニュースLiVE',
+            'uploader': 'weathernewslive',
+            'uploader_id': '6621496731283095554',
+            'uploader_url': 'https://www.tiktok.com/@weathernewslive',
+            'live_status': 'is_live',
+            'concurrent_view_count': int,
+        },
+        'params': {'skip_download': 'm3u8'},
+    }, {
+        'url': 'https://www.tiktok.com/@pilarmagenta/live',
+        'info_dict': {
+            'id': '7209423610325322522',
+            'ext': 'mp4',
+            'title': str,
+            'creator': 'Pilarmagenta',
+            'uploader': 'pilarmagenta',
+            'uploader_id': '6624846890674683909',
+            'uploader_url': 'https://www.tiktok.com/@pilarmagenta',
+            'live_status': 'is_live',
+            'concurrent_view_count': int,
+        },
+        'skip': 'Livestream',
+    }, {
+        'url': 'https://m.tiktok.com/share/live/7209423610325322522/?language=en',
+        'only_matching': True,
+    }, {
+        'url': 'https://www.tiktok.com/@iris04201/live',
+        'only_matching': True,
+    }]
+
+    def _call_api(self, url, param, room_id, uploader, key=None):
+        response = traverse_obj(self._download_json(
+            url, room_id, fatal=False, query={
+                'aid': '1988',
+                param: room_id,
+            }), (key, {dict}), default={})
+
+        # status == 2 if live else 4
+        if int_or_none(response.get('status')) == 2:
+            return response
+        # If room_id is obtained via mobile share URL and cannot be refreshed, do not wait for live
+        elif not uploader:
+            raise ExtractorError('This livestream has ended', expected=True)
+        raise UserNotLive(video_id=uploader)
+
+    def _real_extract(self, url):
+        uploader, room_id = self._match_valid_url(url).group('uploader', 'id')
+        webpage = self._download_webpage(
+            url, uploader or room_id, headers={'User-Agent': 'Mozilla/5.0'}, fatal=not room_id)
+
+        if webpage:
+            data = try_call(lambda: self._get_sigi_state(webpage, uploader or room_id))
+            room_id = (traverse_obj(data, ('UserModule', 'users', ..., 'roomId', {str_or_none}), get_all=False)
+                       or self._search_regex(r'snssdk\d*://live\?room_id=(\d+)', webpage, 'room ID', default=None)
+                       or room_id)
+            uploader = uploader or traverse_obj(
+                data, ('LiveRoom', 'liveRoomUserInfo', 'user', 'uniqueId'),
+                ('UserModule', 'users', ..., 'uniqueId'), get_all=False, expected_type=str)
+
+        if not room_id:
+            raise UserNotLive(video_id=uploader)
+
+        formats = []
+        live_info = self._call_api(
+            'https://webcast.tiktok.com/webcast/room/info', 'room_id', room_id, uploader, key='data')
+
+        get_quality = qualities(('SD1', 'ld', 'SD2', 'sd', 'HD1', 'hd', 'FULL_HD1', 'uhd', 'ORIGION', 'origin'))
+        parse_inner = lambda x: self._parse_json(x, None)
+
+        for quality, stream in traverse_obj(live_info, (
+                'stream_url', 'live_core_sdk_data', 'pull_data', 'stream_data',
+                {parse_inner}, 'data', {dict}), default={}).items():
+
+            sdk_params = traverse_obj(stream, ('main', 'sdk_params', {parse_inner}, {
+                'vcodec': ('VCodec', {str}),
+                'tbr': ('vbitrate', {lambda x: int_or_none(x, 1000)}),
+                'resolution': ('resolution', {lambda x: re.match(r'(?i)\d+x\d+|\d+p', x).group().lower()}),
+            }))
+
+            flv_url = traverse_obj(stream, ('main', 'flv', {url_or_none}))
+            if flv_url:
+                formats.append({
+                    'url': flv_url,
+                    'ext': 'flv',
+                    'format_id': f'flv-{quality}',
+                    'quality': get_quality(quality),
+                    **sdk_params,
+                })
+
+            hls_url = traverse_obj(stream, ('main', 'hls', {url_or_none}))
+            if hls_url:
+                formats.append({
+                    'url': hls_url,
+                    'ext': 'mp4',
+                    'protocol': 'm3u8_native',
+                    'format_id': f'hls-{quality}',
+                    'quality': get_quality(quality),
+                    **sdk_params,
+                })
+
+        def get_vcodec(*keys):
+            return traverse_obj(live_info, (
+                'stream_url', *keys, {parse_inner}, 'VCodec', {str}))
+
+        for stream in ('hls', 'rtmp'):
+            stream_url = traverse_obj(live_info, ('stream_url', f'{stream}_pull_url', {url_or_none}))
+            if stream_url:
+                formats.append({
+                    'url': stream_url,
+                    'ext': 'mp4' if stream == 'hls' else 'flv',
+                    'protocol': 'm3u8_native' if stream == 'hls' else 'https',
+                    'format_id': f'{stream}-pull',
+                    'vcodec': get_vcodec(f'{stream}_pull_url_params'),
+                    'quality': get_quality('ORIGION'),
+                })
+
+        for f_id, f_url in traverse_obj(live_info, ('stream_url', 'flv_pull_url', {dict}), default={}).items():
+            if not url_or_none(f_url):
+                continue
+            formats.append({
+                'url': f_url,
+                'ext': 'flv',
+                'format_id': f'flv-{f_id}'.lower(),
+                'vcodec': get_vcodec('flv_pull_url_params', f_id),
+                'quality': get_quality(f_id),
+            })
+
+        # If uploader is a guest on another's livestream, primary endpoint will not have m3u8 URLs
+        if not traverse_obj(formats, lambda _, v: v['ext'] == 'mp4'):
+            live_info = merge_dicts(live_info, self._call_api(
+                'https://www.tiktok.com/api/live/detail/', 'roomID', room_id, uploader, key='LiveRoomInfo'))
+            if url_or_none(live_info.get('liveUrl')):
+                formats.append({
+                    'url': live_info['liveUrl'],
+                    'ext': 'mp4',
+                    'protocol': 'm3u8_native',
+                    'format_id': 'hls-fallback',
+                    'vcodec': 'h264',
+                    'quality': get_quality('origin'),
+                })
+
+        uploader = uploader or traverse_obj(live_info, ('ownerInfo', 'uniqueId'), ('owner', 'display_id'))
+
+        return {
+            'id': room_id,
+            'uploader': uploader,
+            'uploader_url': format_field(uploader, None, self._UPLOADER_URL_FORMAT) or None,
+            'is_live': True,
+            'formats': formats,
+            '_format_sort_fields': ('quality', 'ext'),
+            **traverse_obj(live_info, {
+                'title': 'title',
+                'uploader_id': (('ownerInfo', 'owner'), 'id', {str_or_none}),
+                'creator': (('ownerInfo', 'owner'), 'nickname'),
+                'concurrent_view_count': (('user_count', ('liveRoomStats', 'userCount')), {int_or_none}),
+            }, get_all=False),
+        }
