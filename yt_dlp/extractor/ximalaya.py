@@ -1,7 +1,7 @@
 import math
 
 from .common import InfoExtractor
-from ..utils import traverse_obj, try_call, InAdvancePagedList
+from ..utils import InAdvancePagedList, str_or_none, traverse_obj, try_call
 
 
 class XimalayaBaseIE(InfoExtractor):
@@ -19,7 +19,7 @@ class XimalayaIE(XimalayaBaseIE):
                 'id': '47740352',
                 'ext': 'm4a',
                 'uploader': '小彬彬爱听书',
-                'uploader_id': 61425525,
+                'uploader_id': '61425525',
                 'uploader_url': 'http://www.ximalaya.com/zhubo/61425525/',
                 'title': '261.唐诗三百首.卷八.送孟浩然之广陵.李白',
                 'description': "contains:《送孟浩然之广陵》\n作者：李白\n故人西辞黄鹤楼，烟花三月下扬州。\n孤帆远影碧空尽，惟见长江天际流。",
@@ -36,7 +36,7 @@ class XimalayaIE(XimalayaBaseIE):
                         'height': 180
                     }
                 ],
-                'categories': ['人文'],
+                'categories': ['其他'],
                 'duration': 93,
                 'view_count': int,
                 'like_count': int,
@@ -48,7 +48,7 @@ class XimalayaIE(XimalayaBaseIE):
                 'id': '47740352',
                 'ext': 'm4a',
                 'uploader': '小彬彬爱听书',
-                'uploader_id': 61425525,
+                'uploader_id': '61425525',
                 'uploader_url': 'http://www.ximalaya.com/zhubo/61425525/',
                 'title': '261.唐诗三百首.卷八.送孟浩然之广陵.李白',
                 'description': "contains:《送孟浩然之广陵》\n作者：李白\n故人西辞黄鹤楼，烟花三月下扬州。\n孤帆远影碧空尽，惟见长江天际流。",
@@ -107,7 +107,7 @@ class XimalayaIE(XimalayaBaseIE):
         return {
             'id': audio_id,
             'uploader': audio_info.get('nickname'),
-            'uploader_id': audio_uploader_id,
+            'uploader_id': str_or_none(audio_uploader_id),
             'uploader_url': f'{scheme}://www.ximalaya.com/zhubo/{audio_uploader_id}/' if audio_uploader_id else None,
             'title': audio_info['title'],
             'thumbnails': thumbnails,
@@ -123,7 +123,7 @@ class XimalayaIE(XimalayaBaseIE):
 class XimalayaAlbumIE(XimalayaBaseIE):
     IE_NAME = 'ximalaya:album'
     IE_DESC = '喜马拉雅FM 专辑'
-    _VALID_URL = r'https?://(?:www\.|m\.)?ximalaya\.com/\d+/album/(?P<id>[0-9]+)'
+    _VALID_URL = r'https?://(?:www\.|m\.)?ximalaya\.com/(?:\d+/)?album/(?P<id>[0-9]+)'
     _TESTS = [{
         'url': 'http://www.ximalaya.com/61425525/album/5534601/',
         'info_dict': {
@@ -131,6 +131,13 @@ class XimalayaAlbumIE(XimalayaBaseIE):
             'id': '5534601',
         },
         'playlist_mincount': 323,
+    }, {
+        'url': 'https://www.ximalaya.com/album/6912905',
+        'info_dict': {
+            'title': '埃克哈特《修炼当下的力量》',
+            'id': '6912905',
+        },
+        'playlist_mincount': 41,
     }]
 
     def _real_extract(self, url):
@@ -151,7 +158,7 @@ class XimalayaAlbumIE(XimalayaBaseIE):
         return self._download_json(
             'https://www.ximalaya.com/revision/album/v1/getTracksList',
             playlist_id, note=f'Downloading tracks list page {page_idx}',
-            query={'albumId': playlist_id, 'pageNum': page_idx, 'sort': 1})['data']
+            query={'albumId': playlist_id, 'pageNum': page_idx})['data']
 
     def _get_entries(self, page_data):
         for e in page_data['tracks']:

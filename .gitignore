@@ -30,8 +30,10 @@ cookies
 *.f4v
 *.flac
 *.flv
+*.gif
 *.jpeg
 *.jpg
+*.lrc
 *.m4a
 *.m4v
 *.mhtml
@@ -39,6 +41,7 @@ cookies
 *.mov
 *.mp3
 *.mp4
+*.mpg
 *.mpga
 *.oga
 *.ogg
@@ -46,6 +49,7 @@ cookies
 *.png
 *.sbv
 *.srt
+*.ssa
 *.swf
 *.swp
 *.tt
@@ -120,9 +124,5 @@ yt-dlp.zip
 */extractor/lazy_extractors.py
 
 # Plugins
-ytdlp_plugins/extractor/*
-!ytdlp_plugins/extractor/__init__.py
-!ytdlp_plugins/extractor/sample.py
-ytdlp_plugins/postprocessor/*
-!ytdlp_plugins/postprocessor/__init__.py
-!ytdlp_plugins/postprocessor/sample.py
+ytdlp_plugins/
+yt-dlp-plugins

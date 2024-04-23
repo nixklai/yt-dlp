@@ -4,11 +4,12 @@ import urllib.parse
 
 from .common import InfoExtractor
 from .youtube import YoutubeBaseInfoExtractor, YoutubeIE
-from ..compat import compat_HTTPError, compat_urllib_parse_unquote
+from ..compat import compat_urllib_parse_unquote
+from ..networking import HEADRequest
+from ..networking.exceptions import HTTPError
 from ..utils import (
     KNOWN_EXTENSIONS,
     ExtractorError,
-    HEADRequest,
     bug_reports_message,
     clean_html,
     dict_get,
@@ -30,6 +31,7 @@ from ..utils import (
     unified_timestamp,
     url_or_none,
     urlhandle_detect_ext,
+    variadic,
 )
 
 
@@ -48,10 +50,9 @@ class ArchiveOrgIE(InfoExtractor):
             'release_date': '19681210',
             'timestamp': 1268695290,
             'upload_date': '20100315',
-            'creator': 'SRI International',
+            'creators': ['SRI International'],
             'uploader': 'laura@archive.org',
             'thumbnail': r're:https://archive\.org/download/.*\.jpg',
-            'release_year': 1968,
             'display_id': 'XD300-23_68HighlightsAResearchCntAugHumanIntellect.cdr',
             'track': 'XD300-23 68HighlightsAResearchCntAugHumanIntellect',
 
@@ -109,7 +110,7 @@ class ArchiveOrgIE(InfoExtractor):
             'title': 'Turning',
             'ext': 'flac',
             'track': 'Turning',
-            'creator': 'Grateful Dead',
+            'creators': ['Grateful Dead'],
             'display_id': 'gd1977-05-08d01t01.flac',
             'track_number': 1,
             'album': '1977-05-08 - Barton Hall - Cornell University',
@@ -129,11 +130,10 @@ class ArchiveOrgIE(InfoExtractor):
             'location': 'Barton Hall - Cornell University',
             'duration': 438.68,
             'track': 'Deal',
-            'creator': 'Grateful Dead',
+            'creators': ['Grateful Dead'],
             'album': '1977-05-08 - Barton Hall - Cornell University',
             'release_date': '19770508',
             'display_id': 'gd1977-05-08d01t07.flac',
-            'release_year': 1977,
             'track_number': 7,
         },
     }, {
@@ -168,7 +168,7 @@ class ArchiveOrgIE(InfoExtractor):
             'upload_date': '20160610',
             'description': 'md5:f70956a156645a658a0dc9513d9e78b7',
             'uploader': 'dimitrios@archive.org',
-            'creator': ['British Broadcasting Corporation', 'Time-Life Films'],
+            'creators': ['British Broadcasting Corporation', 'Time-Life Films'],
             'timestamp': 1465594947,
         },
         'playlist': [
@@ -258,7 +258,7 @@ class ArchiveOrgIE(InfoExtractor):
             'title': m['title'],
             'description': clean_html(m.get('description')),
             'uploader': dict_get(m, ['uploader', 'adder']),
-            'creator': m.get('creator'),
+            'creators': traverse_obj(m, ('creator', {variadic}, {lambda x: x[0] and list(x)})),
             'license': m.get('licenseurl'),
             'release_date': unified_strdate(m.get('date')),
             'timestamp': unified_timestamp(dict_get(m, ['publicdate', 'addeddate'])),
@@ -273,7 +273,7 @@ class ArchiveOrgIE(InfoExtractor):
                     'title': f.get('title') or f['name'],
                     'display_id': f['name'],
                     'description': clean_html(f.get('description')),
-                    'creator': f.get('creator'),
+                    'creators': traverse_obj(f, ('creator', {variadic}, {lambda x: x[0] and list(x)})),
                     'duration': parse_duration(f.get('length')),
                     'track_number': int_or_none(f.get('track')),
                     'album': f.get('album'),
@@ -301,7 +301,7 @@ class ArchiveOrgIE(InfoExtractor):
             is_logged_in = bool(self._get_cookies('https://archive.org').get('logged-in-sig'))
             if extension in KNOWN_EXTENSIONS and (not f.get('private') or is_logged_in):
                 entry['formats'].append({
-                    'url': 'https://archive.org/download/' + identifier + '/' + f['name'],
+                    'url': 'https://archive.org/download/' + identifier + '/' + urllib.parse.quote(f['name']),
                     'format': f.get('format'),
                     'width': int_or_none(f.get('width')),
                     'height': int_or_none(f.get('height')),
@@ -897,7 +897,7 @@ class YoutubeWebArchiveIE(InfoExtractor):
                     video_id, note='Fetching archived video file url', expected_status=True)
             except ExtractorError as e:
                 # HTTP Error 404 is expected if the video is not saved.
-                if isinstance(e.cause, compat_HTTPError) and e.cause.code == 404:
+                if isinstance(e.cause, HTTPError) and e.cause.status == 404:
                     self.raise_no_formats(
                         'The requested video is not archived, indexed, or there is an issue with web.archive.org (try again later)', expected=True)
                 else:
@@ -924,7 +924,7 @@ class YoutubeWebArchiveIE(InfoExtractor):
         info['thumbnails'] = self._extract_thumbnails(video_id)
 
         if urlh:
-            url = compat_urllib_parse_unquote(urlh.geturl())
+            url = compat_urllib_parse_unquote(urlh.url)
             video_file_url_qs = parse_qs(url)
             # Attempt to recover any ext & format info from playback url & response headers
             format = {'url': url, 'filesize': int_or_none(urlh.headers.get('x-archive-orig-content-length'))}
