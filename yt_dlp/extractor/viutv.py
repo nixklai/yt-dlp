@@ -9,44 +9,6 @@ from random import choices
 class ViuTVBaseIE(InfoExtractor):
     # _GEO_COUNTRIES = ['HK']
 
-    _SUBTITLE_LOOKUP_DICT = {
-        'Chinese': {
-            'label': 'TRD',
-            'text': 'Chinese',
-            'locale': 'zh'
-        },
-        'English': {
-            'label': 'GBR',
-            'text': 'English',
-            'locale': 'en'
-        },
-        'German': {
-            'label': 'DEU',
-            'text': 'German',
-            'locale': 'de'
-        },
-        'Spanish': {
-            'label': 'ESP',
-            'text': 'Spanish',
-            'locale': 'es'
-        },
-        'French': {
-            'label': 'FRA',
-            'text': 'French',
-            'locale': 'fr'
-        },
-        'Italian': {
-            'label': 'ITA',
-            'text': 'Italian',
-            'locale': 'it'
-        },
-        'Japanese': {
-            'label': 'JAP',
-            'text': 'Japanese',
-            'locale': 'ja'
-        }
-    }
-
     def _fetch_program_api(self, program_slug):
         return self._download_json('https://api.viu.tv/production/programmes/%s' % program_slug, program_slug)
 
@@ -55,7 +17,7 @@ class ViuTVBaseIE(InfoExtractor):
 
 
 class ViuTVProgramIE(ViuTVBaseIE):
-    _VALID_URL = r'^https?://(?:www\.)?viu\.tv/encore/(?P<id>[a-z\-]+)$'
+    _VALID_URL = r'^https?://(?:www\.)?viu\.tv/encore/(?P<id>[a-z0-9\-]+)$'
     IE_NAME = 'ViuTV:Programme'
 
     def _real_extract(self, url):
@@ -68,6 +30,7 @@ class ViuTVProgramIE(ViuTVBaseIE):
         return {
             '_type': 'playlist',
             'id': program_slug,
+            'display_id': program_slug,
             'title': program_name,
             'series_id': program_slug,
             'series': program_name,
@@ -101,25 +64,17 @@ class ViuTVProductIE(ViuTVBaseIE):
             return
 
         manifest_url = traverse_obj(manifest_json, ('asset', 0))
-        
-    
-        subtitles = {}
-        for (_, language) in enumerate(self._SUBTITLE_LOOKUP_DICT):
-            
-            subtitles[traverse_obj(self._SUBTITLE_LOOKUP_DICT, (language, 'locale'))] = [{
-                'url': 'https://static.viu.tv/subtitle/%s/%s-%s.srt' % (product_id, product_id, self._SUBTITLE_LOOKUP_DICT[language]['label'])
-            }]
+        print(f"{manifest_url=}")
 
         return {
             'id': product_id,
             'title': product_id,
             'formats': self._extract_mpd_formats(manifest_url, video_id=product_id),
-            'subtitles': subtitles
         }
 
 
 class ViuTVEpisodeIE(ViuTVBaseIE):
-    _VALID_URL = r'^https?://(?:www\.)?viu\.tv/encore/(?P<program_id>[a-z\-]+)/(?P<id>[a-z0-9\-]+)$'
+    _VALID_URL = r'^https?://(?:www\.)?viu\.tv/encore/(?P<program_id>[a-z0-9\-]+)/(?P<id>[a-z0-9\-]+)$'
     IE_NAME = 'ViuTV:Episode'
 
     def _real_extract(self, url):
@@ -129,12 +84,14 @@ class ViuTVEpisodeIE(ViuTVBaseIE):
 
         programme = self._fetch_program_api(program_slug=program_slug)
         episode = [episode for episode in traverse_obj(programme, ('programme', 'episodes')) if episode.get('slug') == episode_slug][0]
-        _product_id = episode.get('productId')
+        product_id = episode.get('productId')
+        
+        print(f"{product_id=}")
 
         manifest_request_data = bytes(json.dumps({
             'callerReferenceNo': datetime.now().strftime('%Y%m%d%H%M%S'),
-            'productId': _product_id,
-            'contentId': _product_id,
+            'productId': product_id,
+            'contentId': product_id,
             'contentType': 'Vod',
             'mode': 'prod',
             'PIN': 'password',
@@ -146,23 +103,18 @@ class ViuTVEpisodeIE(ViuTVBaseIE):
 
         manifest_json = self._download_json('https://api.viu.now.com/p8/3/getVodURL', data=manifest_request_data, video_id=episode_slug)
         manifest_url = traverse_obj(manifest_json, ('asset', 0))
-        subtitles = {}
         
-        for language in episode.get('productSubtitle').split(','):
-            key = traverse_obj(self._SUBTITLE_LOOKUP_DICT, (language, 'locale'))
-            
-            subtitles[key] = [{
-                'url': 'https://static.viu.tv/subtitle/%s/%s-%s.srt' % (_product_id, _product_id, traverse_obj(self._SUBTITLE_LOOKUP_DICT, (language, 'label')))
-            }]
+        print(f"{manifest_url}")
 
         return {
-            'id': episode_slug,
+            'id': product_id,
+            'display_id': episode_slug,
             'title': episode.get('episodeNameU3'),
+            'propgram': traverse_obj(episode, ('programmeMeta', 'seriesTitle')),
             'series': traverse_obj(episode, ('programmeMeta', 'seriesTitle')),
             'series_id': traverse_obj(programme, ('programme', 'slug')),
             'season_number': int(traverse_obj(episode, ('programmeMeta', 'seasonNo'))),
             'episode': episode.get('episodeNameU3'),
             'episode_number': episode.get('episodeNum'),
             'formats': self._extract_mpd_formats(manifest_url, video_id=episode_slug),
-            'subtitles': subtitles
         }

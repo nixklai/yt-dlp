@@ -267,6 +267,43 @@ class WgetFD(ExternalFD):
         return cmd
 
 
+class NM3u8DlFD(ExternalFD):
+    AVAILABLE_OPT = '-v'
+    EXE_NAME = 'nm3u8dl'
+    SUPPORTED_PROTOCOLS = ('http', 'https', 'dash', 'm3u8')
+
+    def _make_cmd(self, tmpfilename, info_dict):
+        cmd = [
+                # self.EXE_NAME, 
+                "D:\\BIN\\N_m3u8DL-RE.exe",
+                info_dict['url'],               
+               '--thread-count=5', '--concurrent-download=true', '--download-retry-count=999999',
+               '--key=91ba752a446148c68400d78374b178b4:a01d7dc4edf582496b7e73d67e9e6899']
+
+        dn = os.path.dirname(tmpfilename)
+        cmd += ['--save-dir', self._aria2c_filename(dn) + os.path.sep]
+        cmd += ['--save-name', self._aria2c_filename(os.path.basename(tmpfilename))]
+        # if 'fragments' not in info_dict:
+
+        # if 'fragments' in info_dict:
+        #     cmd += ['--uri-selector=inorder']
+        #     url_list_file = '%s.frag.urls' % tmpfilename
+        #     url_list = []
+        #     for frag_index, fragment in enumerate(info_dict['fragments']):
+        #         fragment_filename = '%s-Frag%d' % (os.path.basename(tmpfilename), frag_index)
+        #         url_list.append('%s\n\tout=%s' % (fragment['url'], self._aria2c_filename(fragment_filename)))
+        #     stream, _ = self.sanitize_open(url_list_file, 'wb')
+        #     stream.write('\n'.join(url_list).encode())
+        #     stream.close()
+        #     cmd += ['-i', self._aria2c_filename(url_list_file)]
+        # else:
+        #     cmd += ['--', info_dict['url']]
+        
+        print(f"{cmd=}")
+        
+        return cmd
+
+
 class Aria2cFD(ExternalFD):
     AVAILABLE_OPT = '-v'
     SUPPORTED_PROTOCOLS = ('http', 'https', 'ftp', 'ftps', 'dash_frag_urls', 'm3u8_frag_urls')

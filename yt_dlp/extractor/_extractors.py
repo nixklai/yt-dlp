@@ -2345,6 +2345,11 @@ from .viu import (
     ViuOTTIndonesiaIE,
     ViuPlaylistIE,
 )
+from .viutv import (
+    ViuTVProgramIE,
+    ViuTVEpisodeIE,
+    ViuTVProductIE,
+)
 from .vk import (
     VKIE,
     VKPlayIE,
@@ -2373,6 +2378,10 @@ from .vrt import (
 )
 from .vtm import VTMIE
 from .vuclip import VuClipIE
+from .vueschool import (
+    VueSchoolLessonIE,
+    VueSchoolCourseIE
+)
 from .vvvvid import (
     VVVVIDIE,
     VVVVIDShowIE,
